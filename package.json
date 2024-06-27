@@ -1,0 +1,20 @@
+{
+  "name": "mailbot-backend",
+  "version": "1.0.0",
+  "main": "app.mjs",
+  "scripts": {
+    "start": "node ./src/app.mjs",
+    "dev": "nodemon ./src/app.mjs",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Alejandra Paillas",
+  "license": "GPL-3.0",
+  "description": "",
+  "dependencies": {
+    "express": "^4.19.2",
+    "ollama": "^0.5.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.4"
+  }
+}
