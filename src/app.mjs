@@ -1,54 +1,10 @@
 import express from "express";
-import ollama from "ollama";
-import fs from "fs/promises";
-import { simpleParser } from "mailparser";
 import axios from "axios";
+import { readMail } from "./utils/readMail.mjs";
 
-const ollamaUrl = "http://localhost:11434/api/generate"; // Replace with your Ollama server URL
+const ollamaUrl = "https://ollama.godspeed.moe/api/chat";
 
-const emailFolderUri = new URL(
-  "../email/management/Inbox/cur/",
-  import.meta.url
-);
-
-async function findMail() {
-  const emailFolderPath = emailFolderUri.pathname;
-  //console.log(emailFolderPath);
-  const storedEmails = await fs.readdir(emailFolderPath);
-  //console.log(storedEmails);
-  return storedEmails;
-}
-
-async function readMail(storedEmails) {
-  storedEmails = await findMail();
-  const emailUri = new URL(storedEmails.pop(), emailFolderUri);
-  const emailContent = await fs.readFile(emailUri.pathname, "utf-8");
-  //console.log(emailContent);
-
-  const parsedEmail = await simpleParser(emailContent);
-  const textBody = parsedEmail.text;
-  //console.log(textBody);
-  return textBody;
-}
-
-async function sendToOllama(data) {
-  try {
-    data = await readMail();
-    //console.log(data);
-
-    const messageForOllama = {
-      message: "¿Podrías extraer los datos de contacto de este email?: " + data,
-    };
-    const response = await axios.post(
-      "http://localhost:3000/send-to-ollama",
-      messageForOllama
-    );
-    console.log("Ollama response:", response.data);
-  } catch (error) {
-    console.error("Error sending data to Ollama:", error);
-  }
-}
-sendToOllama();
+const ollamaModel = "stablelm-zephyr";
 
 const app = express(); // Create an Express application instance
 // Enable JSON body parsing
@@ -60,32 +16,58 @@ app.get("/", (req, res) => {
   res.send("Hello World!"); // Respond to root path (/) with "Hello World!"
 });
 
-app.get("/email", (req, res) => {});
-
-app.post("/send-to-ollama", async (req, res) => {
+app.get("/email", async (req, res) => {
   try {
-    const message = req.body.message; // Extract message from request body
-
-    if (!message) {
-      return res.status(400).send("Missing message in request body");
-    }
-
-    const model = req.body.model || "tinyllama"; // Model to use (defaults to llama3)
-
-    const ollamaRequest = {
-      model,
-      messages: [{ role: "user", content: message }],
-    };
-
-    const response = await ollama.chat(ollamaRequest, ollamaUrl); // Send request to Ollama
-
-    res.json(response); // Send Ollama response back to client
+    const textBody = await readMail();
+    res.status(200).json({ status: "success", msg: textBody });
   } catch (error) {
     console.error(error);
-    res.status(500).send("Error sending message to Ollama server");
+    res.status(500).json({ status: "Error", msg: "Internal server error." });
   }
 });
 
-app.listen(port, () => {
+app.post("/send-to-ollama", async (req, res) => {
+  const { message } = req.body;
+
+  if (!message) {
+    return res.status(400).json({ error: "Message is required" });
+  }
+
+  const requestBody = {
+    model: ollamaModel,
+    messages: [{ role: "user", content: message }],
+    stream: false,
+  };
+
+  try {
+    console.log("Sending request to Ollama:", requestBody);
+
+    const response = await axios.post(ollamaUrl, requestBody, {
+      headers: { "Content-Type": "application/json" }, // Ensure Content-Type is set
+    });
+
+    console.log("Response from Ollama:", response.data);
+
+    if (
+      response.data &&
+      response.data.message &&
+      response.data.message.content
+    ) {
+      res.status(200).json({ response: response.data });
+    } else {
+      res.status(204).json({ message: "No content in response" });
+    }
+  } catch (error) {
+    console.error(
+      "Error posting message:",
+      error.response ? error.response.data : error.message
+    );
+    res
+      .status(500)
+      .json({ error: error.response ? error.response.data : error.message });
+  }
+});
+
+app.listen(port, "0.0.0.0", () => {
   console.log(`Server is listening on port ${port}`);
 });
